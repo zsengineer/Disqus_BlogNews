@@ -22,9 +22,9 @@ public class KafkaController {
         
         KeyedMessage<String, String> dataII = new KeyedMessage<String, String>(DisqusConsumer.outputTopic, null,post);
        
-                
         DisqusConsumer.kproducer.send(dataII);
-       
+        
+       // Thread.sleep(1);
         
         
         }

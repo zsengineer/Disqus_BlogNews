@@ -109,17 +109,14 @@ public class DisqusConsumer {
 	public static String smtpPort;
 	public static String smtp_username;
 	public static String smtp_password;
-	
+		
 	public static Channel channel;
 	public static Channel uchannel;
 	public static Channel nchannel;
 	public static com.rabbitmq.client.Connection connection;
-		
+	
 	public static String splnkIP;
 	public static String splnkPort;
-	
-	public static String inputTopic;
-	public static String outputTopic;
 	
 	public static String blogID;
 	public static String newsID;
@@ -127,9 +124,14 @@ public class DisqusConsumer {
 	public static String postID;
 	public static String flag;
 	
+	public static String inputTopic;
+	public static String outputTopic;
+	
 	public static int postCount=0;
 	public static int msgCount=0;
-	public static int hashMapCount =0;
+	public static int dupeCount=0;
+	public static int hashMapCount=0; 
+	
 	
 	public static File rfile;
 	public static File efile;
@@ -139,19 +141,15 @@ public class DisqusConsumer {
 	
 	public static HTable htable;
 	
-	public static HashMap<String, String> dupeList = new HashMap<String,String>(); 
-	
 	public static DriverManagerDataSource dataSource;
 	 
-	 
+	public static HashMap<String, String> dupeList = new HashMap<String,String>(); 
+	
+	
 	/* kafka related variables*/
 	public static Properties props = null;
 	
-	public static Properties propsII = null;
-	
 	public static Producer<String, String> kproducer=null;
-	
-	public static Producer<String, String> mproducer=null;
 	 
 	public static Logger logger = LoggerFactory.getLogger("disqus_deduper");
 	
@@ -169,17 +167,18 @@ public class DisqusConsumer {
         return new ConsumerConfig(props);
     }
     
-    public static String createMsg(String post){
-    	
-    	String forumID = "";
-    	String publicForumId = "";
-    	String publicThreadId = "";
+  public static String createMsg(String post){
+		
     	String publicId="";
     	String changed="";
     	String type_prev="";
     	String type_="";
-    	    	
-    	
+	  
+	  
+	  
+    	String forumID = "";
+    	String publicForumId = "";
+    	String publicThreadId = "";
     	String msgType = "";
     	String getDate = "";
     	String madeDate = "";
@@ -213,220 +212,242 @@ public class DisqusConsumer {
     	
     	if (post != null) {
     	try {
-		  		ObjectMapper mapper = new ObjectMapper();
-			   	mapper.setSerializationInclusion(Include.NON_NULL);
-			   	String subStr = "message_body";
-			   	int occurrence = (post.length() - post.replaceAll(Pattern.quote(subStr), "").length()) / subStr.length();
-			   	String[] splitted = new String[3];
-			   	splitted[1] = post;
-			   	if(occurrence > 1) {
-			   		splitted = post.split("message_body");
-			   		post = splitted[1];
-			   		if(post.endsWith("{\"")){
-			   			post = post.substring(0, post.length() - 2);		   			
-			   		}
-			   		splitted[1] = post.replaceFirst("\":", "{\"message_body\":");
-			   		//System.out.println(splitted[1]);
-			   		post = splitted[2];
-			   		if(post.endsWith("{\"")){
-			   			post = post.substring(0, post.length() - 2);		   			
-			   		}
-			   		splitted[2] = post.replaceFirst("\":", "{\"message_body\":");
-			   		//System.out.println(splitted[2]);
-			   	}
-			   	if(splitted!=null){
-			   			   	
-			   	for(int i=1;i<splitted.length-1;i++){
-			        if(splitted[i] != null){
-			        	post = splitted[i];
-			        } else {
-			        	break;
-			        }
-			        JsonNode messageNode = mapper.readTree(post);
-				    if (!messageNode.isArray() && !messageNode.isObject()){
-			    	try {
-			    		throw new Exception("INVALID JSON");
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				    }else if( messageNode.isArray()){
-				    	Iterator<JsonNode> commItems = messageNode.elements();	
-				       	 while (commItems.hasNext()) {
-							 JsonNode jobjNode = commItems.next();
-							 String statid = jobjNode.get("id").asText();
-							 byte[] currRecord;
-				    	 }
-				    }else if(messageNode.isObject()) {
-				       	ObjectMapper m = new ObjectMapper();
-			        	JsonNode rootNode;
-						rootNode = m.readTree(post);
-					   	
-						JsonNode nameNodeI = rootNode.findValue("message_type");
-				    	msgType=nameNodeI.textValue(); 
-				       
-				    	JsonNode nameNodeII = rootNode.path("message_body").findPath("public_forum_id");
-				    	publicForumId =nameNodeII.textValue();	
-				    	
-				    	if(post.contains("changed")){	
-					    	JsonNode nameNodeIII = rootNode.path("message_body").findPath("changed");
-					    	if(nameNodeIII.isObject()){
-					    	    ObjectMapper objm = new ObjectMapper();
-					    		changed =nameNodeIII.toString();
-					    	}
-					    }
-				    	
-				    	if(post.contains("type_prev")){	
-					    	JsonNode nameNodeIV = rootNode.path("message_body").findPath("type_prev");
-					    	type_prev =nameNodeIV.textValue();
-				    	}
-				    	
-				    	if(post.contains("public_id")){			    	 	
-				       		JsonNode nameNodeV = rootNode.path("message_body").findPath("public_id");
-				       		publicId=nameNodeV.textValue();
-				    	}
-				    
-				    	JsonNode nameNodeVI = rootNode.path("message_body").findPath("public_thread_id");
-				    	publicThreadId =nameNodeVI.textValue();
-		   
-				    	if(post.contains("type_")){	
-					    	JsonNode nameNodeVII = rootNode.path("message_body").findPath("type");
-					    	type_ =nameNodeVII.textValue();
-				    	}
-				    	
-				    	if(msgType.equalsIgnoreCase("post") || msgType.equalsIgnoreCase("vote")){
-				    		
-				    		//System.out.println("Count of post msgs: " + msgCount);
-				    		
-				    	} else {
-				    		return finalMsg;				    	
-				    	}
-				    	
-				    	
-				    	
-				    String uniqueKey =publicId   + "_" + publicForumId;
-				      	
-			        if(!dupeList.containsKey(uniqueKey)){
-			        	if(changed.equalsIgnoreCase("{}") && type_prev.equalsIgnoreCase(type_)){
-        		    		//Thread.sleep(1000);
-    			    		return "DUPLICATE";
-    			    	}
-				        dupeList.put(uniqueKey, uniqueKey);
-				        hashMapCount +=1;
-				    } else {
-				        	return "DUPLICATE";
-				    }
-				      	
-				    if(hashMapCount >= 50000){
-				        	hashMapCount = 0;
-				        	dupeList = new HashMap<String, String>();
-				    }
-						
-				       /* if(recordsAffected ==0){
-				      	  recordsAffected = check_message(publicId, publicForumId);
-				      	  if(recordsAffected <= 0){
-				      		  recordsAffected = 0;
-				      		  return null;
-				      	  }
-				      	  recordsAffected = insert_message(publicForumId,domain,threadUrl,isBlog,isNews,isOther,blogSiteID,newsSiteID,insertedDate,modifiedDate);
-				     	   
-				         }*/
-				         
-				         
-				         //System.out.println(" [x] Sent '" + msgCount + "' MESSAGES.");
-				        
-				        
-				    	//CHECK HBASE IF SOURCE EXISTS
-				    	//******************************************************
-					  	byte[] currRecord;
-	        		   	
-				      	currRecord = get(publicForumId,publicId,publicThreadId);
-	        		    if(currRecord != null && currRecord.length != 0 ) {
-	        		    	if(changed.equalsIgnoreCase("{}") && type_prev.equalsIgnoreCase(type_) && msgType.equalsIgnoreCase("Post")){
-	        		    		//Thread.sleep(1000);
-	    			    		return "DUPLICATE";
-	    			    	}
-	        		  
-	        		  	}else {
-			 				 msgCount += 1;
-							//INSERT NEW SOURCE
-							flagType = "INSERT";
-							put(publicForumId,publicId,publicThreadId);
-							htable.flushCommits();
-							if(!post.isEmpty()){
-								kp.sendMessage(post);
-							}
-							//System.out.println("Delivered msgCount " + msgCount + " msg.");
-						    
-								 
-			 					 //increment value before insert***
-						}		 
-	        		    
-	        		    
-				    }
-				    	
-			   	}
-			   }
-		    
-		   	} catch (Exception e) {
-				// TODO Auto-generated catch block
-		   	  try {
-				efop.write("ERROR:" + e.getMessage() +"  "  + DateTime.now().toString());
-			} catch (IOException e1) {
-				// TODO Auto-generated catch block
-				e1.printStackTrace();
-			}
-				
+    		ObjectMapper mapper = new ObjectMapper();
+		   	mapper.setSerializationInclusion(Include.NON_NULL);
+		   	String subStr = "message_body";
+		   	int occurrence = (post.length() - post.replaceAll(Pattern.quote(subStr), "").length()) / subStr.length();
+		   	String[] splitted = new String[3];
+		   	splitted[1] = post;
+		   	if(occurrence > 1) {
+		   		splitted = post.split("message_body");
+		   		post = splitted[1];
+		   		if(post.endsWith("{\"")){
+		   			post = post.substring(0, post.length() - 2);		   			
+		   		}
+		   		splitted[1] = post.replaceFirst("\":", "{\"message_body\":");
+		   		//System.out.println(splitted[1]);
+		   		post = splitted[2];
+		   		if(post.endsWith("{\"")){
+		   			post = post.substring(0, post.length() - 2);		   			
+		   		}
+		   		splitted[2] = post.replaceFirst("\":", "{\"message_body\":");
+		   		//System.out.println(splitted[2]);
 		   	}
-		}
+		   	if(splitted!=null){
+		   			   	
+		   	for(int i=1;i<splitted.length-1;i++){
+		        if(splitted[i] != null){
+		        	post = splitted[i];
+		        } else {
+		        	break;
+		        }
+		        JsonNode messageNode = mapper.readTree(post);
+			    if (!messageNode.isArray() && !messageNode.isObject()){
+		    	try {
+		    		throw new Exception("INVALID JSON");
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			    }else if( messageNode.isArray()){
+			    	Iterator<JsonNode> commItems = messageNode.elements();	
+			       	 while (commItems.hasNext()) {
+						 JsonNode jobjNode = commItems.next();
+						 String statid = jobjNode.get("id").asText();
+						 byte[] currRecord;
+			    	 }
+			    }else if(messageNode.isObject()) {
+			       	ObjectMapper m = new ObjectMapper();
+		        	JsonNode rootNode;
+					rootNode = m.readTree(post);
+				   	
+					JsonNode nameNodeI = rootNode.findValue("message_type");
+			    	msgType=nameNodeI.textValue(); 
+			       
+			    	JsonNode nameNodeII = rootNode.path("message_body").findPath("public_forum_id");
+			    	publicForumId =nameNodeII.textValue();	
+			    	
+			    	if(post.contains("changed")){	
+				    	JsonNode nameNodeIII = rootNode.path("message_body").findPath("changed");
+				    	if(nameNodeIII.isObject()){
+				    	    ObjectMapper objm = new ObjectMapper();
+				    		changed =nameNodeIII.toString();
+				    	}
+				    }
+			    	
+			    	if(post.contains("type_prev")){	
+				    	JsonNode nameNodeIV = rootNode.path("message_body").findPath("type_prev");
+				    	type_prev =nameNodeIV.textValue();
+			    	}
+			    	
+			    	if(post.contains("public_id")){			    	 	
+			       		JsonNode nameNodeV = rootNode.path("message_body").findPath("public_id");
+			       		publicId=nameNodeV.textValue();
+			    	}
+			    
+			    	JsonNode nameNodeVI = rootNode.path("message_body").findPath("public_thread_id");
+			    	publicThreadId =nameNodeVI.textValue();
+	   
+			    	if(post.contains("type_")){	
+				    	JsonNode nameNodeVII = rootNode.path("message_body").findPath("type");
+				    	type_ =nameNodeVII.textValue();
+			    	}
+			    	
+			    	if(msgType.equalsIgnoreCase("post")){
+			    		msgCount+=1;
+			    		//System.out.println("Count of post msgs: " + msgCount);
+			    		
+			    	} else {
+			    		return finalMsg;				    	
+			    	}
+			    	
+			    						
+					threadUrl = threadLink;
+				  	byte[] currRecord;
+        		   	if(publicForumId.isEmpty()){
+			    		return "";
+			    	}
+        		   	
+        		   	String uniqueKey = publicId  + "_" + publicForumId;
+			      	
+			        if(!dupeList.containsKey(uniqueKey)){
+			        	dupeList.put(uniqueKey, uniqueKey);
+			        	hashMapCount +=1;
+			        } else {
+			        	return "";
+			        }
+			      	
+			        if(hashMapCount >= 500000){
+			        	hashMapCount = 0;
+			        	dupeList = new HashMap<String, String>();
+			        }
+        		   	
+			       
+				  // byte[] currRecord;
+				     	
+			      	currRecord = get(publicForumId,domain,threadUrl,publicId,newsId,blogId,flagType);
+        		    if(currRecord != null && currRecord.length != 0 ) {
+        		    	dupeCount +=1;
+        		    	//System.out.println(currRecord.length);
+        		    	//System.out.println(" [x] Found '" + dupeCount + "/" + hashMapCount + "' -  DUPLICATE MESSAGES/TOTAL MESSAGES");
+        		    	
+        		    	return "DUPLICATE";
+        		  	}else {
+		 				
+		 				     msgCount += 1;
+							 //INSERT NEW SOURCE
+							 flagType = "INSERT";
+							 put(publicForumId,domain,threadUrl,publicId,newsId,blogId,flagType);
+							 htable.flushCommits();
+							
+		 				 //increment value before insert***
+					}		 
+        		    
+			    	}	    
+			    }
+		   	}
+			   	
+		   // System.out.println(" [x] Sent '" + msgCount + "' MESSAGES.");
+	        
+			   
+		    
+		   	} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+		   	}
+		    
+         	
+       if(msgType.equals("Post") && recordsAffected ==0){
+    	   forumSiteID = fetch_message(publicForumId,domain,threadUrl,isBlog,isNews,isOther,blogSiteID,newsSiteID,insertedDate,modifiedDate);
+    	   recordsAffected = insert_message(publicForumId,domain,threadUrl,isBlog,isNews,isOther,blogSiteID,newsSiteID,insertedDate,modifiedDate);
+   	   }
+       
+      // System.out.println(" [x] Sent '" + msgCount + "' MESSAGES.");
+		 
+
+      	
+    	 
+          
+       if(flag.equals("BLOG")){
+		 sendMessage(post,forumSiteID,flag);
+	  } else if(flag.equals("NEWS")){
+		sendMessage(post,forumSiteID,flag);
+	  }else if(flag.equals("UNKNOWN")){
+		sendMessage(post,forumSiteID,flag);
+	  }else if(flag.equals("NEW")){
+		  sendMessage(post,forumSiteID,flag);  
+   
+      }
+      
+       flag="";
+      
+       
+    	}
+    	
     	
     	return finalMsg;
     	
     	
     }
 
-    public static void put(String publicForumId, String publicId, String publicThreadId) throws RetriesExhaustedWithDetailsException, InterruptedIOException {
+
+     public static void put(String forumId, String domain, String  threadUrl,String postID,String newsId,String blogId, String flag) throws RetriesExhaustedWithDetailsException, InterruptedIOException {
     	try {
-	    		Put put = new Put(Bytes.toBytes(publicId + "_" + publicForumId));
+	    	if(flag.equals("UPDATE")){
+	    		//Increment incr = new Increment(Bytes.toBytes(forumId + "." + threadUrl));
+	    	    //System.out.println("INCREMENTING HBASE RECORD : " + forumId + "." + threadUrl);
 	    		
-	    		//System.out.println("ADDED TO HBASE: " + publicId + "_" + publicForumId);
-	    		
-				put.add(Bytes.toBytes("forum data"),Bytes.toBytes("forum ID"),Bytes.toBytes(publicForumId)); 
-	    		put.add(Bytes.toBytes("forum data"),Bytes.toBytes("public ID"),Bytes.toBytes(publicId));
-			    
+				//long count1 = htable.incrementColumnValue(Bytes.toBytes("forumId"),Bytes.toBytes("threadUrl"),Bytes.toBytes("postCount"),1);
+			
+	    		Put put = new Put(Bytes.toBytes(postID + "_" + forumId));
+	    		//System.out.println("ADDED TO HBASE: " + postID + "_" + forumId);
+	    		if(StringUtils.isEmpty(threadUrl)){
+	    			threadUrl="";
+	    		}
+	    	//	put.add(Bytes.toBytes("forum data"),Bytes.toBytes("threadUrl"),Bytes.toBytes(threadUrl));
+	    		put.add(Bytes.toBytes("forum data"),Bytes.toBytes("forumID"),Bytes.toBytes(domain));
+	    		put.add(Bytes.toBytes("forum data"),Bytes.toBytes("postID"),Bytes.toBytes(postID));
+	    		    		
 	    		htable.put(put);
+	    		
+	    	}else if(flag.equals("INSERT")){
+	    		Put put = new Put(Bytes.toBytes(postID + "_" + forumId));
+	    		//System.out.println("ADDED TO HBASE:postID " + postID + "_" + forumId);
+	    		
+	    		if(StringUtils.isEmpty(threadUrl)){
+	    			threadUrl="";
+	    		}
+	    		
+	    		put.add(Bytes.toBytes("forum data"),Bytes.toBytes("forumID"),Bytes.toBytes(domain));
+	    		put.add(Bytes.toBytes("forum data"),Bytes.toBytes("postID"),Bytes.toBytes(postID));
+	    		    		
+	    		htable.put(put);
+	    	}
  		
     	} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			try {
-				efop.write("ERROR:" + e.getMessage() +"  "  + DateTime.now().toString());
-			} catch (IOException e1) {
-				// TODO Auto-generated catch block
-				e1.printStackTrace();
-			}
 		}		
 		
 	}
     
-    public static byte[] get(String publicForumId, String publicId,String publicThreadId) throws IOException  {
+    public static byte[] get(String forumId, String domain, String  threadUrl,String postid, String newsId,String blogId,String flag) throws IOException  {
 		
-    
+    	//postid="3811866047";
+    	//domain="hexo.io";
+    	//forumId="2918947";
     	
-        Get g = new Get(Bytes.toBytes(publicId  + "_" + publicForumId));
-        
-        g.addColumn( Bytes.toBytes("forum data"), Bytes.toBytes("public Id"));
+        Get g = new Get(Bytes.toBytes(postid  + "_" + forumId));
+        g.addColumn(Bytes.toBytes("forum data"), Bytes.toBytes("postID"));
         byte [] value= "test".getBytes();
-        byte [] valueII= "test".getBytes();
         
         try{
       	  
       	  Result r = htable.get(g);
-  		  value = r.getValue(Bytes.toBytes("forum data"), Bytes.toBytes("public Id"));
-  		  //valueII = r.getValue(Bytes.toBytes("forum data"), Bytes.toBytes("public Thread"));
+  		  value = r.getValue(Bytes.toBytes("forum data"), Bytes.toBytes("postID"));
   	 	  String valueStr = Bytes.toString(value);
       	   
-  	 	  //System.out.println("RETRIEVED RECORD " + valueStr);
+  	 	 // System.out.println("RETRIEVED RECORD " + valueStr);
   	 	  
   	 	 
   	 	  
@@ -434,16 +455,86 @@ public class DisqusConsumer {
         }catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			efop.write("ERROR:" + e.getMessage() +"  "  + DateTime.now().toString());
 		}
              	  
 		
         return value;
 	   		
 	}
-      
+       
     
     public static int check_message(String forumID, String postID){
+    	 Integer recReturn = 0;
+    	    
+    	    int recordsAffected = 0;
+    		int type = 0;
+    		
+    		int likes = 0;
+    		int wereHere = 0;
+    		int tlkAbout = 0;
+    		
+    		//setDataSource();
+    		Connection conn = null ;
+    		
+    		try {
+    			
+    			
+    			Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+   			String connectionUrl = "jdbc:sqlserver://192.168.4.201;" + 
+    	                 "database=PowerTrack;" + 
+    	                 "user=sa;" + 
+    	                 "password=97CupChamps"; 
+    			conn = DriverManager.getConnection(connectionUrl); 
+    			
+    			String SQL="INSERT INTO DisqusIDs(forumID, postID) VALUES(?,?)";
+    		    			
+    		    PreparedStatement preparedStmt = conn.prepareStatement(SQL);
+    		      
+    		    preparedStmt.setString (1, forumID);
+    		    preparedStmt.setString (2, postID);
+    		    
+    		    
+    		    recordsAffected = preparedStmt.executeUpdate();
+
+
+    		   
+    			
+    			
+    		    } catch (ClassNotFoundException | SQLException e) {
+    			// TODO Auto-generated catch block
+    			//e.printStackTrace();
+    			if(e.getMessage().contains("Duplicate")){
+    			   	try {
+    					conn.close();
+    				} catch (SQLException e1) {
+    					// TODO Auto-generated catch block
+    					e1.printStackTrace();
+    				}												
+    				return recordsAffected = 3;
+    			}
+    		} 
+    		catch(Exception e)
+    		{
+    			e.printStackTrace();
+    		  	try {
+    				conn.close();
+    			} catch (SQLException e1) {
+    				// TODO Auto-generated catch block
+    				e1.printStackTrace();
+    			}	
+    		}	
+    			
+    		//flag="NEW";
+    		
+    		return recordsAffected;
+    	    
+    	
+    	
+    	
+    	
+    }
+    
+    public static int check_duplicate(String postID, String forumID){
    	 Integer recReturn = 0;
    	    
    	    int recordsAffected = 0;
@@ -459,24 +550,28 @@ public class DisqusConsumer {
    		try {
    			
    			
-   			Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
-   			String connectionUrl = "jdbc:sqlserver://192.168.4.201;" + 
-   	                 "database=PowerTrack;" + 
-   	                 "user=sa;" + 
-   	                 "password=97CupChamps"; 
-   			conn = DriverManager.getConnection(connectionUrl); 
+   			Class.forName("com.mysql.jdbc.Driver");
+   			String connectionUrl =""; 
+   			Properties info = new Properties( );
+   			info.put( "user", "portal_master" );
+   			info.put( "password", "vahh9Ugh2eiCh8" );
+   			conn = DriverManager.getConnection(connectionString,info); 
    			
-   			String SQL="INSERT INTO DisqusIDs(forumID, postID) VALUES(?,?)";
-   		    			
-   		    PreparedStatement preparedStmt = conn.prepareStatement(SQL);
+   			//CallableStatement cstmnt = conn.prepareCall("{ call putNewFanPage(?,?,?,?,?,?,?,?,?,?,?,?) }");
+   		     String uniqueKey = postID + "_"+ forumID;
    		      
-   		    preparedStmt.setString (1, forumID);
-   		    preparedStmt.setString (2, postID);
+   		      
+   		    String sql = "insert into DisqusThread(forumID) values (?)";
+   		        
+   		    PreparedStatement preparedStmt = conn.prepareStatement(sql);
+   		      
+   		    preparedStmt.setString(1, uniqueKey);
+   		   
+   		   
+   		    preparedStmt.execute();
+   		      
+   		    conn.close();
    		    
-   		    
-   		    recordsAffected = preparedStmt.executeUpdate();
-
-
    		   
    			
    			
@@ -509,13 +604,9 @@ public class DisqusConsumer {
    		return recordsAffected;
    	    
    	
+    }
    	
    	
-   	
-   }
-    
-    
-    
     
     
     public static int insert_message(String forumID,String domain,String thread_url,String isBlog,String isNews, String isOther,String blogSiteID,String newsSiteId,String insertedDate,String modifiedDate){
@@ -598,7 +689,7 @@ public class DisqusConsumer {
 		}	
 	}	
 		
-	flag="NEW";
+	//flag="NEW";
 	
 	return recordsAffected;
     
@@ -747,7 +838,7 @@ public class DisqusConsumer {
     	    		flag = "NEWS";
     	    	}else if(newsid.equals("") && userid.equals("")){
     	    		forumSiteID="";
-    	    		flag = "BLOG";
+    	    		flag = "UNKNOWN";
     	    	}
     	    		
     	    }
@@ -797,6 +888,15 @@ public class DisqusConsumer {
         
         {
 
+            //outStreamSplunk = new PrintWriter(clientSocket.getOutputStream(), true);
+            //outStreamSplunk.flush();
+            ///clientSocket.setKeepAlive(true);
+            //clientSocket.setSoTimeout(1000);
+            
+
+            //outStreamSplunk.println(post);
+            //System.out.println("SENT MESSAGE: " + post);
+            //clientSocket.close();
         
         	//RABBITMQ MESSAGE DELIVERY 
             /****************************************************************/
@@ -813,7 +913,7 @@ public class DisqusConsumer {
              if(flag.equals("BLOG")){
              channel.basicPublish("blogs.discus.input", "blogs.discus",new AMQP.BasicProperties.Builder()
                     .headers(headerMap).build(),message.getBytes());
-             nchannel.basicPublish("stream.disqus.test", "disqus.test", new AMQP.BasicProperties.Builder()
+             uchannel.basicPublish("stream.disqus.test", "disqus.test", new AMQP.BasicProperties.Builder()
                    .headers(headerMap).build(),message.getBytes()); 
              nchannel.basicPublish("news.discus.input", "news.discus", new AMQP.BasicProperties.Builder()
                      .headers(headerMap).build(),message.getBytes());
@@ -821,6 +921,8 @@ public class DisqusConsumer {
              } else if(flag.equals("NEWS")){ 
              nchannel.basicPublish("news.discus.input", "news.discus", new AMQP.BasicProperties.Builder()
                      .headers(headerMap).build(),message.getBytes());
+             uchannel.basicPublish("stream.disqus.test", "disqus.test", new AMQP.BasicProperties.Builder()
+                     .headers(headerMap).build(),message.getBytes()); 
              } else if (flag.equals("UNKNOWN")){
             	 channel.basicPublish("blogs.discus.input", "blogs.discus",new AMQP.BasicProperties.Builder()
                          .headers(headerMap).build(),message.getBytes());
@@ -828,8 +930,9 @@ public class DisqusConsumer {
                          .headers(headerMap).build(),message.getBytes());
              }
              
+   
              
-             System.out.println(" [x] Sent Rabbit '" + message + "'");
+            // System.out.println(" [x] Sent Rabbit '" + message + "'");
            
           /****************************************************************/
              //COMPLETED RABBITMQ MESSAGE DELIVERY 
@@ -849,14 +952,13 @@ public class DisqusConsumer {
 		String groupId = DGroupID;
     	  	
     	String zooKeeper = "192.168.7.124:2181,192.168.7.125:2181,192.168.7.126:2181";
-    	String zooKeeperSysops = "192.168.7.127:2181, 192.168.7.128:2181, 192.168.7.129:2181";
         String topic = inputTopic;
         int threads = 1;
-
+      
 		/**********************************************
 		
 					STARTING DISQUS PRODUCER
-		
+		c
 		***********************************************/
 		
 		try {
@@ -864,7 +966,9 @@ public class DisqusConsumer {
 			
 			//errorReporting("*STARTING DISQUS STREAM CONSUMER*");
 			initializeAppLogs();
-	
+			
+			
+			
 			rfop.write("*STARTING DISQUS STREAM CONSUMER*"  + "  "  + DateTime.now().toString());
 			efop.write("*STARTING DISQUS STREAM CONSUMER*"  + "  "  + DateTime.now().toString());
 			
@@ -874,13 +978,6 @@ public class DisqusConsumer {
 		    props.put("broker.list","192.168.7.124:9092,192.168.7.125:9092,192.168.7.126:9092");
 		    props.put("request.required.acks", "1");
 		    props.put("auto.offset.reset", "smallest");
-		    
-		    /*propsII = new Properties();
-			propsII.put("metadata.broker.list", "192.168.7.127:9092, 192.168.7.128:9092, 192.168.7.129:9092");
-		   	propsII.put("serializer.class", "kafka.serializer.StringEncoder");
-		    propsII.put("broker.list","192.168.7.124:9092,192.168.7.125:9092,192.168.7.126:9092");
-		    propsII.put("request.required.acks", "1");
-		    propsII.put("auto.offset.reset", "smallest");*/
 			
 			/*SET HBASE CONNECTION AND CONFIGURATION*/
 			Configuration conf = HBaseConfiguration.create();
@@ -888,45 +985,63 @@ public class DisqusConsumer {
 			for (Entry<String, String> e: conf) {
 				  System.out.println(e.getKey() + " ------> " + e.getValue());
 			}
-			rfop.write("Create hbase connection."  + "  "  + DateTime.now().toString()); 
+			 
 			ProducerConfig config = new ProducerConfig(props);
 			kproducer = new Producer<String, String>(config);
-			rfop.write("kafka producer initiated"  + "  "  + DateTime.now().toString());
-			//ProducerConfig sysConfig = new ProducerConfig(propsII);
-			//mproducer = new Producer<String, String>(sysConfig);
-			
-			
 			  
 			htable =new HTable(conf,"Disqus_Firehose");
 			htable.setAutoFlushTo(true);
 			/*SET HBASE CONNECTION AND CONFIGURATION*/  
 			
-						
+			rfop.write("HBASE connection successful."  + "  "  + DateTime.now().toString());
+            
+        
+             ConnectionFactory factory = new ConnectionFactory();
+             factory.setHost("rabbit-facebook");
+             factory.setVirtualHost("/discus");
+             connection = factory.newConnection();
+             
+             channel = connection.createChannel();
+             channel.queueDeclare("blogs.disqus.input",true, false,false,null);
+             
+             nchannel = connection.createChannel();
+             nchannel.queueDeclare("news.disqus.input",true, false,false,null);
+             
+             uchannel = connection.createChannel();
+             uchannel.queueDeclare("unknown.disqus.input",true, false,false,null);
+             
+             rfop.write("RABBITMQ connection successful."  + "  "  + DateTime.now().toString());
+        
 		} catch (MessagingException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			//errorReporting(e.getMessage().toString() + " " + " MAIN FUNCTION.");
 			try {
-				efop.write("ERROR MAIN - "  + e.getMessage() + " "  + DateTime.now().toString());
-			} catch (IOException e1) {
+				efop.write("ERROR: "  + e.getMessage() + "  "  + DateTime.now().toString());
+			} catch (Exception e1) {
 				// TODO Auto-generated catch block
 				e1.printStackTrace();
 			}
-			
 			
 		} catch (IOException e) {
 			
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 			try {
-				efop.write("ERROR MAIN - "  + e.getMessage() + " "  + DateTime.now().toString());
-			} catch (IOException e1) {
+				efop.write("ERROR: "  + e.getMessage()  + "  "  + DateTime.now().toString());
+			} catch (Exception e1) {
 				// TODO Auto-generated catch block
 				e1.printStackTrace();
 			}
-		} 
+		} catch (TimeoutException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		
 		
 
+        
+        
+        
         
         try
    	    {
@@ -942,15 +1057,12 @@ public class DisqusConsumer {
         Map<String, List<KafkaStream<byte[], byte[]>>> consumerMap = consumer.createMessageStreams(topicCountMap);
         List<KafkaStream<byte[], byte[]>> streams = consumerMap.get(topic);
         
-        rfop.write("Start consuming kafka topic: "  + inputTopic +"  "  + DateTime.now().toString());
-		
-        
         for ( KafkaStream stream : streams) {
         	
         	 ConsumerIterator<byte[], byte[]> it = stream.iterator();
         	 
         	 //errorReporting("...CONSUMER-KAFKA CONNECTION SUCCESSFUL!");
-        	 
+        	 rfop.write("Consuming from KAFKA topic: " + inputTopic + "  "  + DateTime.now().toString());
         	 
            while (it.hasNext())
              {
@@ -958,33 +1070,33 @@ public class DisqusConsumer {
             	 try{
             	 
 		            	 String mesg = new String(it.next().message());
+		            	//System.out.println( mesg);
 		            	 if (mesg.isEmpty() || mesg ==""){
 		            		 continue;
 		            	 }
-		            	 
-		            	 //System.out.println( mesg);
 		            	 // TEST FUNCTION TO RECREATE JSON FOR KIBANA/SQL/SPLUNK
-		            	  mesg = createMsg(mesg);
+		            	 mesg = createMsg(mesg);
 		            	 // END OF REST FUNCTION
 		            	 //SEND MESSAGE VIA TCP CONNECTION
-		                 //sendMessage(mesg);
+		                // sendMessage(mesg);
             	 }  		
                  catch(Exception e)
                  {
-                	 efop.write("ERROR :"  +e.getMessage()+  "  "  + DateTime.now().toString());
-         			
+                 	e.printStackTrace();
                  	continue;
                  }
                  
              }
                  
-             System.out.println("MESSAGE TRANSMISSION SUCCESSFUL!");
+             //System.out.println("MESSAGE TRANSMISSION SUCCESSFUL!");
+             channel.close();
+             nchannel.close();
+             nchannel.close();
+             
+           
          }
        
-        htable.close();
-        
-        
-        
+        connection.close();	        
         }
         catch(Exception e)
         {
@@ -992,7 +1104,7 @@ public class DisqusConsumer {
         }
         }
         
-    private static void getConfigurations(){
+    private static void getConfigurations() {
 		
 		 Properties fileProp = new Properties();
 		 try {
@@ -1021,14 +1133,8 @@ public class DisqusConsumer {
 			streamURL =fileProp.getProperty("streamUrl");
 			
 			
-		} catch (Exception io) {
-			 try {
-				efop.write("Error:" + io.getMessage()+ "  "  + DateTime.now().toString());
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				//e.printStackTrace();
-			}
-				
+		} catch (IOException io) {
+			io.printStackTrace();
 		} 		
 			
 		}
@@ -1054,8 +1160,8 @@ public class DisqusConsumer {
 	       
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			//e.printStackTrace();
-			///errorReporting(e.getMessage().toString());
+			e.printStackTrace();
+			//errorReporting(e.getMessage().toString());
 		}
 		  
 	 }
@@ -1080,7 +1186,7 @@ public class DisqusConsumer {
 		message.setSubject("DISQUS_PRODUCER");
 		message.setContent(errMessage,"text/html");
 		Transport.send(message);
-		System.out.println("MESSAGE SENT - WOO WOO!");
+		//System.out.println("MESSAGE SENT - WOO WOO!");
 		
 	}
     
